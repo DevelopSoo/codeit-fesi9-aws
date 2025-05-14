@@ -1,6 +1,4 @@
-# .github/workflows/deploy.yml
-
-name: EC2로 자동배포하기
+name: npm 성능 테스트
 
 on:
   push:
@@ -8,55 +6,40 @@ on:
       - main
 
 jobs:
-  deploy:
+  npm-test:
     runs-on: ubuntu-latest
     steps:
-      - name: Github Repository 파일 가져오기
+      - name: Repository 체크아웃
         uses: actions/checkout@v4
 
-      - name: Node 설치
+      - name: Node.js 설치
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: 의존성(라이브러리) 설치
-        run: npm ci
-
-      - name: .env 파일 생성
-        run: echo "${{ secrets.ENV }}" > .env
-
-      - name: 테스트
-        run: echo "테스트" # 실제로는 npm run test 하면 됨
-
-      - name: AWS Resource에 접근할 수 있게 AWS credentials 설정
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: npm 캐시 설정
+        id: npm-cache
+        uses: actions/cache@v3
         with:
-          aws-region: ap-northeast-2
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
 
-      - name: ECR에 로그인하기
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+      - name: 캐시 상태 출력
+        run: |
+          if [[ "${{ steps.npm-cache.outputs.cache-hit }}" == 'true' ]]; then
+            echo "캐시 히트: true"
+          else
+            echo "캐시 히트: false"
+          fi
 
-      - name: Docker 이미지 생성
-        run: docker build -t codeit-fesi9 .
-
-      - name: Docker 이미지에 Tag 붙이기
-        run: docker tag codeit-fesi9 ${{ steps.login-ecr.outputs.registry }}/codeit-fesi9-ecr-repo:latest
-
-      - name: ECR에 Docker 이미지 Push하기
-        run: docker push ${{ steps.login-ecr.outputs.registry }}/codeit-fesi9-ecr-repo:latest
-
-      - name: SSH로 EC2에 접속하기
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_PEM_KEY }}
-          script: |
-            set -e
-            docker stop codeit-fesi9 || true
-            docker rm codeit-fesi9 || true
-            docker pull ${{ steps.login-ecr.outputs.registry }}/codeit-fesi9-ecr-repo:latest
-            docker run -d --name codeit-fesi9 -p 3000:3000 ${{ steps.login-ecr.outputs.registry }}/codeit-fesi9-ecr-repo:latest
+      - name: npm 설치 및 빌드 시간 측정
+        run: |
+          echo "=== npm 테스트 시작 ==="
+          echo "캐시 상태: ${{ steps.npm-cache.outputs.cache-hit }}"
+          echo "npm install 시작"
+          time npm install
+          echo "npm run build 시작"
+          time npm run build
+          echo "=== npm 테스트 종료 ==="
