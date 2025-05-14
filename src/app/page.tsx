@@ -15,7 +15,7 @@ export default function Home() {
 
   return (
     <div>
-      <div>한국어: 안녕 자동 SCP 배포야!</div>
+      <div>한국어: 안녕 자동 CodeDeploy 배포야!</div>
       <div>영어: {message}</div>
     </div>
   );

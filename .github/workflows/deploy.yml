@@ -29,31 +29,21 @@ jobs:
         run: npm run build
 
       - name: 압축
-        # NODE_MODULES 폴더는 압축하지 않는다.
-        run: tar -czvf codeit-fesi9-aws.tar.gz .next .env package.json package-lock.json
+        run: tar -czvf $GITHUB_SHA.tar.gz appspec.yml scripts .next .env package.json package-lock.json
 
-      - name: SCP로 EC2로 빌드된 파일을 전송한다.
-        uses: appleboy/scp-action@v0.1.7
+      - name: AWS 서비스에 접근할 수 있게 AWS credentials 설정
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_PEM_KEY }}
-          source: codeit-fesi9-aws.tar.gz
-          target: /home/ubuntu/codeit-fesi9-aws/build
+          aws-region: ap-northeast-2
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-      - name: SSH로 EC2 접속하기
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_PEM_KEY }}
-          script: |
-            set -e
-            rm -rf /home/ubuntu/codeit-fesi9-aws/current
-            mkdir /home/ubuntu/codeit-fesi9-aws/current
-            mv /home/ubuntu/codeit-fesi9-aws/build/codeit-fesi9-aws.tar.gz /home/ubuntu/codeit-fesi9-aws/current/codeit-fesi9-aws.tar.gz
-            cd /home/ubuntu/codeit-fesi9-aws/current
-            tar -xvf codeit-fesi9-aws.tar.gz
-            npm install
-            pm2 kill
-            pm2 start npm --name "nextjs-app" -- start
+      - name: S3에 프로젝트 폴더 업로드하기
+        run: aws s3 cp --region ap-northeast-2 ./$GITHUB_SHA.tar.gz s3://codeit-fesi9-storage/$GITHUB_SHA.tar.gz
+
+      - name: Code Deploy를 활용해 EC2에 프로젝트 코드 배포
+        run: aws deploy create-deployment
+          --application-name codeit-fesi9-codedeploy
+          --deployment-config-name CodeDeployDefault.AllAtOnce
+          --deployment-group-name Production
+          --s3-location bucket=codeit-fesi9-storage,bundleType=tgz,key=$GITHUB_SHA.tar.gz
